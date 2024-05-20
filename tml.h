@@ -162,20 +162,24 @@ TMLDEF tml_message* tml_load_tsf_stream(struct tsf_stream* stream);
 
 #define TML_NULL 0
 
+#ifdef DEBUG
+#ifdef TML_NO_STDIO
 ////crash on errors and warnings to find broken midi files while debugging
-//#define TML_ERROR(msg) *(int*)0 = 0xbad;
-//#define TML_WARN(msg)  *(int*)0 = 0xf00d;
-
+#	define TML_ERROR(msg, ...) *(int*)0 = 0xbad;
+#	define TML_WARN(msg, ...)  *(int*)0 = 0xf00d;
+#else
 ////print errors and warnings
-//#define TML_ERROR(msg) printf("ERROR: %s\n", msg);
-//#define TML_WARN(msg)  printf("WARNING: %s\n", msg);
+#	define TML_ERROR(msg, ...) fprintf(stderr, ("ERROR: " msg), ##__VA_ARGS__);
+#	define TML_WARN(msg, ...)  fprintf(stderr, ("WARNING: " msg), ##__VA_ARGS__);
+#endif //TML_NO_STDIO
+#endif //DEBUG
 
 #ifndef TML_ERROR
-#define TML_ERROR(msg)
+#define TML_ERROR(msg, ...)
 #endif
 
 #ifndef TML_WARN
-#define TML_WARN(msg)
+#define TML_WARN(msg, ...)
 #endif
 
 #ifdef __cplusplus

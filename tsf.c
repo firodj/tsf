@@ -1081,9 +1081,17 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 	float* floatBuffer = TSF_NULL;
 	tsf_u32 smplCount = 0;
 
+	#define SkipChunk \
+		{ \
+			char fourcc[5] = {chunkList.id[0], chunkList.id[1], chunkList.id[2], chunkList.id[3], 0}; \
+			TSF_WARN("Skipping '%s' (%d)\n", fourcc, chunkList.size) \
+			stream->skip(stream->data, chunkList.size); \
+		}
+
 	if (!tsf_riffchunk_read(TSF_NULL, &chunkHead, stream) || !TSF_FourCCEquals(chunkHead.id, "sfbk"))
 	{
 		//if (e) *e = TSF_INVALID_NOSF2HEADER;
+		TSF_ERROR("TSF_INVALID_NOSF2HEADER\n");
 		return res;
 	}
 
@@ -1113,7 +1121,7 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 				if      HandleChunk(phdr) else if HandleChunk(pbag) else if HandleChunk(pmod)
 				else if HandleChunk(pgen) else if HandleChunk(inst) else if HandleChunk(ibag)
 				else if HandleChunk(imod) else if HandleChunk(igen) else if HandleChunk(shdr)
-				else stream->skip(stream->data, chunk.size);
+				else SkipChunk
 				#undef HandleChunk
 			}
 		}
@@ -1129,18 +1137,20 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 				{
 					if (!tsf_load_samples(&rawBuffer, &floatBuffer, &smplCount, &chunk, stream)) goto out_of_memory;
 				}
-				else stream->skip(stream->data, chunk.size);
+				else SkipChunk
 			}
 		}
-		else stream->skip(stream->data, chunkList.size);
+		else SkipChunk
 	}
 	if (!hydra.phdrs || !hydra.pbags || !hydra.pmods || !hydra.pgens || !hydra.insts || !hydra.ibags || !hydra.imods || !hydra.igens || !hydra.shdrs)
 	{
 		//if (e) *e = TSF_INVALID_INCOMPLETE;
+		TSF_ERROR("TSF_INVALID_INCOMPLETE\n");
 	}
 	else if (!rawBuffer && !floatBuffer)
 	{
 		//if (e) *e = TSF_INVALID_NOSAMPLEDATA;
+		TSF_ERROR("TSF_INVALID_NOSAMPLEDATA\n");
 	}
 	else
 	{
@@ -1160,6 +1170,7 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 		TSF_FREE(res);
 		res = TSF_NULL;
 		//if (e) *e = TSF_OUT_OF_MEMORY;
+		TSF_ERROR("TSF_OUT_OF_MEMORY\n");
 	}
 	TSF_FREE(hydra.phdrs); TSF_FREE(hydra.pbags); TSF_FREE(hydra.pmods);
 	TSF_FREE(hydra.pgens); TSF_FREE(hydra.insts); TSF_FREE(hydra.ibags);

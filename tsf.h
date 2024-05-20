@@ -113,7 +113,8 @@ TSFDEF const char* tsf_get_presetname(const tsf* f, int preset_index);
 // Returns the name of a preset by bank and preset number
 TSFDEF const char* tsf_bank_get_presetname(const tsf* f, int bank, int preset_number);
 
-// Supported output modes by the render methods
+// Supported output modes by the render methods:
+// TSF_STEREO_INTERLEAVED, TSF_STEREO_UNWEAVED, TSF_MONO.
 enum TSFOutputMode
 {
 	// Two channels with single left/right samples one after another
@@ -268,6 +269,26 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 #define TSF_BOOL char
 #define TSF_PI 3.14159265358979323846264338327950288
 #define TSF_NULL 0
+
+#ifdef DEBUG
+#ifdef TSF_NO_STDIO
+////crash on errors and warnings to find broken midi files while debugging
+#	define TSF_ERROR(msg, ...) *(int*)0 = 0xbad;
+#	define TSF_WARN(msg, ...)  *(int*)0 = 0xf00d;
+#else
+////print errors and warnings
+#	define TSF_ERROR(msg, ...) fprintf(stderr, ("ERROR: " msg), ##__VA_ARGS__);
+#	define TSF_WARN(msg, ...)  fprintf(stderr, ("WARNING: " msg), ##__VA_ARGS__);
+#endif //TSF_NO_STDIO
+#endif //NDEBUG
+
+#ifndef TSF_ERROR
+#define TSF_ERROR(msg, ...)
+#endif
+
+#ifndef TSF_WARN
+#define TSF_WARN(msg, ...)
+#endif
 
 #ifdef __cplusplus
 #  undef CPP_DEFAULT0
