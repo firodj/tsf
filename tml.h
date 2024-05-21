@@ -169,8 +169,8 @@ TMLDEF tml_message* tml_load_tsf_stream(struct tsf_stream* stream);
 #	define TML_WARN(msg, ...)  *(int*)0 = 0xf00d;
 #else
 ////print errors and warnings
-#	define TML_ERROR(msg, ...) fprintf(stderr, ("ERROR: " msg), ##__VA_ARGS__);
-#	define TML_WARN(msg, ...)  fprintf(stderr, ("WARNING: " msg), ##__VA_ARGS__);
+#	define TML_ERROR(msg, ...) fprintf(stderr, ("ERROR: " msg "\n"), ##__VA_ARGS__);
+#	define TML_WARN(msg, ...)  fprintf(stderr, ("WARNING: " msg "\n"), ##__VA_ARGS__);
 #endif //TML_NO_STDIO
 #endif //DEBUG
 

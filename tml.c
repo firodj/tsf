@@ -148,7 +148,33 @@ static int tml_parsemessage(tml_message** f, struct tml_parser* p)
 				((struct tml_tempomsg*)evt)->Tempo[2] = metadata[2];
 				break;
 
+			case TML_TIME_SIGNATURE:
+				if (buflen != 4) { TML_WARN("Invalid length for TimeSignature meta event"); return -1; }
+				{
+					unsigned char nn = metadata[0];
+					unsigned char dd = metadata[1];
+					unsigned char cc = metadata[2];
+					unsigned char bb = metadata[3];
+
+					TML_WARN("TimeSignature %d/%d Metronome:%d, 4th/32nd: %d", nn, 2<<(dd-1), cc, bb);
+				}
+				evt->type = 0;
+				break;
+
+			case TML_KEY_SIGNATURE:
+				if (buflen != 2) { TML_WARN("Invalid length for KeySignature meta event"); return -1; }
+				{
+					char sf = metadata[0];
+					unsigned char mi = metadata[1];
+
+					TML_WARN("KeySignature %s(%d) %s(%d)",
+						sf == 0 ? "C" : sf == -1 ? "Cb" : sf == 1 ? "C#" : "??", sf,
+						mi == 0 ? "Maj" : mi == 1 ? "min" : "??", mi);
+				}
+				evt->type = 0;
+				break;
 			default:
+				TML_WARN("Skip meta event: %02x len:%d", meta_type, buflen);
 				evt->type = 0;
 		}
 	}
@@ -210,6 +236,7 @@ TMLDEF tml_message* tml_load(struct tml_stream* stream)
 	if (num_tracks <= 0 && division <= 0) { TML_ERROR("Doesn't look like a MIDI file: invalid track or division values"); return messages; }
 
 	// Allocate temporary tracks array for parsing
+	TML_WARN("Number of tracks: %d", num_tracks)
 	tracks = (struct tml_track*)TML_MALLOC(sizeof(struct tml_track) * num_tracks);
 	tracksEnd = &tracks[num_tracks];
 	for (t = tracks; t != tracksEnd; t++) t->Idx = t->End = t->Ticks = 0;
@@ -235,7 +262,7 @@ TMLDEF tml_message* tml_load(struct tml_stream* stream)
 			int type = tml_parsemessage(&messages, &p);
 			if (type == TML_EOT || type < 0) break; //file end or illegal data encountered
 		}
-		if (p.buf != p.buf_end) { TML_WARN( "Track length did not match data length"); }
+		if (p.buf != p.buf_end) { TML_WARN( "Track length did not match data length, actual:%lx expect:%lx", (uintptr_t)p.buf, (uintptr_t)p.buf_end); }
 		t->End = p.message_count;
 	}
 	TML_FREE(trackbuf);
@@ -251,6 +278,7 @@ TMLDEF tml_message* tml_load(struct tml_stream* stream)
 		// Loop through all messages over all tracks ordered by time
 		for (step_smallest = 0; step_smallest != 0x7fffffff; ticks += step_smallest)
 		{
+			TML_WARN("step_smallest %d %d", ticks, step_smallest);
 			step_smallest = 0x7fffffff;
 			msec = tempo_msec + (int)((ticks - tempo_ticks) * ticks2time);
 			for (t = tracks; t != tracksEnd; t++)
@@ -268,6 +296,7 @@ TMLDEF tml_message* tml_load(struct tml_stream* stream)
 					}
 					if (Msg->type)
 					{
+						TML_WARN("Msg time change: delta %d ticks -> absolute %d msec", Msg->time, msec);
 						Msg->time = msec;
 						if (PrevMessage) { PrevMessage->next = Msg; PrevMessage = Msg; }
 						else { Swap = *Msg; *Msg = *messages; *messages = Swap; PrevMessage = messages; }
