@@ -193,8 +193,8 @@ struct tsf_channels
 static double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
 static float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
 static float tsf_cents2Hertz(float cents) { return 8.176f * TSF_POWF(2.0f, cents / 1200.0f); }
-static float tsf_decibelsToGain(float db) { return (db > -100.f ? TSF_POWF(10.0f, db * 0.05f) : 0); }
-static float tsf_gainToDecibels(float gain) { return (gain <= .00001f ? -100.f : (float)(20.0 * TSF_LOG10(gain))); }
+static float tsf_decibelsToGain(float db) { return (db > -100.f ? TSF_POWF(10.0f, db * 1/40.0f) : 0); }
+static float tsf_gainToDecibels(float gain) { return (gain <= .00001f ? -100.f : (float)(40.0 * TSF_LOG10(gain))); }
 
 static TSF_BOOL tsf_riffchunk_read(struct tsf_riffchunk* parent, struct tsf_riffchunk* chunk, struct tsf_stream* stream)
 {
@@ -1744,7 +1744,7 @@ TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int con
 	return 1;
 TCMC_SET_VOLUME:
 	//Raising to the power of 3 seems to result in a decent sounding volume curve for MIDI
-	tsf_channel_set_volume(f, channel, TSF_POWF((c->midiVolume / 16383.0f) * (c->midiExpression / 16383.0f), 3.0f));
+	tsf_channel_set_volume(f, channel, TSF_POWF((c->midiVolume / 16383.0f) * (c->midiExpression / 16383.0f), 2.0f));
 	return 1;
 TCMC_SET_PAN:
 	tsf_channel_set_pan(f, channel, c->midiPan / 16383.0f);
