@@ -1,4 +1,5 @@
 #include "tsf.h"
+#include "tsf_internal.h"
 
 #if !defined(TSF_MALLOC) || !defined(TSF_FREE) || !defined(TSF_REALLOC)
 #  include <stdlib.h>
@@ -33,33 +34,7 @@
 #  include <stdio.h>
 #endif
 
-typedef char tsf_fourcc[4];
-typedef signed char tsf_s8;
-typedef unsigned char tsf_u8;
-typedef unsigned short tsf_u16;
-typedef signed short tsf_s16;
-typedef unsigned int tsf_u32;
-typedef char tsf_char20[20];
-
 #define TSF_FourCCEquals(value1, value2) (value1[0] == value2[0] && value1[1] == value2[1] && value1[2] == value2[2] && value1[3] == value2[3])
-
-struct tsf
-{
-	struct tsf_preset* presets;
-	float* fontSamples;
-	struct tsf_voice* voices;
-	struct tsf_channels* channels;
-
-	int presetNum;
-	int voiceNum;
-	int maxVoiceNum;
-	unsigned int voicePlayIndex;
-
-	enum TSFOutputMode outputmode;
-	float outSampleRate;
-	float globalGainDB;
-	int* refCount;
-};
 
 #ifndef TSF_NO_STDIO
 static int tsf_stream_stdio_read(FILE* f, void* ptr, unsigned int size) { return (int)fread(ptr, 1, size, f); }
@@ -85,7 +60,6 @@ TSFDEF tsf* tsf_load_filename(const char* filename)
 }
 #endif
 
-struct tsf_stream_memory { const char* buffer; unsigned int total, pos; };
 static int tsf_stream_memory_read(struct tsf_stream_memory* m, void* ptr, unsigned int size) { if (size > m->total - m->pos) size = m->total - m->pos; TSF_MEMCPY(ptr, m->buffer+m->pos, size); m->pos += size; return size; }
 static int tsf_stream_memory_skip(struct tsf_stream_memory* m, unsigned int count) { if (m->pos + count > m->total) return 0; m->pos += count; return 1; }
 TSFDEF tsf* tsf_load_memory(const void* buffer, int size)
@@ -98,29 +72,6 @@ TSFDEF tsf* tsf_load_memory(const void* buffer, int size)
 	return tsf_load(&stream);
 }
 
-enum { TSF_LOOPMODE_NONE, TSF_LOOPMODE_CONTINUOUS, TSF_LOOPMODE_SUSTAIN };
-
-enum { TSF_SEGMENT_NONE, TSF_SEGMENT_DELAY, TSF_SEGMENT_ATTACK, TSF_SEGMENT_HOLD, TSF_SEGMENT_DECAY, TSF_SEGMENT_SUSTAIN, TSF_SEGMENT_RELEASE, TSF_SEGMENT_DONE };
-
-struct tsf_hydra
-{
-	struct tsf_hydra_phdr *phdrs; struct tsf_hydra_pbag *pbags; struct tsf_hydra_pmod *pmods;
-	struct tsf_hydra_pgen *pgens; struct tsf_hydra_inst *insts; struct tsf_hydra_ibag *ibags;
-	struct tsf_hydra_imod *imods; struct tsf_hydra_igen *igens; struct tsf_hydra_shdr *shdrs;
-	int phdrNum, pbagNum, pmodNum, pgenNum, instNum, ibagNum, imodNum, igenNum, shdrNum;
-};
-
-union tsf_hydra_genamount { struct { tsf_u8 lo, hi; } range; tsf_s16 shortAmount; tsf_u16 wordAmount; };
-struct tsf_hydra_phdr { tsf_char20 presetName; tsf_u16 preset, bank, presetBagNdx; tsf_u32 library, genre, morphology; };
-struct tsf_hydra_pbag { tsf_u16 genNdx, modNdx; };
-struct tsf_hydra_pmod { tsf_u16 modSrcOper, modDestOper; tsf_s16 modAmount; tsf_u16 modAmtSrcOper, modTransOper; };
-struct tsf_hydra_pgen { tsf_u16 genOper; union tsf_hydra_genamount genAmount; };
-struct tsf_hydra_inst { tsf_char20 instName; tsf_u16 instBagNdx; };
-struct tsf_hydra_ibag { tsf_u16 instGenNdx, instModNdx; };
-struct tsf_hydra_imod { tsf_u16 modSrcOper, modDestOper; tsf_s16 modAmount; tsf_u16 modAmtSrcOper, modTransOper; };
-struct tsf_hydra_igen { tsf_u16 genOper; union tsf_hydra_genamount genAmount; };
-struct tsf_hydra_shdr { tsf_char20 sampleName; tsf_u32 start, end, startLoop, endLoop, sampleRate; tsf_u8 originalPitch; tsf_s8 pitchCorrection; tsf_u16 sampleLink, sampleType; };
-
 #define TSFR(FIELD) stream->read(stream->data, &i->FIELD, sizeof(i->FIELD));
 static void tsf_hydra_read_phdr(struct tsf_hydra_phdr* i, struct tsf_stream* stream) { TSFR(presetName) TSFR(preset) TSFR(bank) TSFR(presetBagNdx) TSFR(library) TSFR(genre) TSFR(morphology) }
 static void tsf_hydra_read_pbag(struct tsf_hydra_pbag* i, struct tsf_stream* stream) { TSFR(genNdx) TSFR(modNdx) }
@@ -132,63 +83,6 @@ static void tsf_hydra_read_imod(struct tsf_hydra_imod* i, struct tsf_stream* str
 static void tsf_hydra_read_igen(struct tsf_hydra_igen* i, struct tsf_stream* stream) { TSFR(genOper) TSFR(genAmount) }
 static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* stream) { TSFR(sampleName) TSFR(start) TSFR(end) TSFR(startLoop) TSFR(endLoop) TSFR(sampleRate) TSFR(originalPitch) TSFR(pitchCorrection) TSFR(sampleLink) TSFR(sampleType) }
 #undef TSFR
-
-struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
-struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
-struct tsf_voice_envelope { float level, slope; int samplesUntilNextSegment; short segment, midiVelocity; struct tsf_envelope parameters; TSF_BOOL segmentIsExponential, isAmpEnv; };
-struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
-struct tsf_voice_lfo { int samplesUntil; float level, delta; };
-
-struct tsf_region
-{
-	int loop_mode;
-	unsigned int sample_rate;
-	unsigned char lokey, hikey, lovel, hivel;
-	unsigned int group, offset, end, loop_start, loop_end;
-	int transpose, tune, pitch_keycenter, pitch_keytrack;
-	float attenuation, pan;
-	struct tsf_envelope ampenv, modenv;
-	int initialFilterQ, initialFilterFc;
-	int modEnvToPitch, modEnvToFilterFc, modLfoToFilterFc, modLfoToVolume;
-	float delayModLFO;
-	int freqModLFO, modLfoToPitch;
-	float delayVibLFO;
-	int freqVibLFO, vibLfoToPitch;
-};
-
-struct tsf_preset
-{
-	tsf_char20 presetName;
-	tsf_u16 preset, bank;
-	struct tsf_region* regions;
-	int regionNum;
-};
-
-struct tsf_voice
-{
-	int playingPreset, playingKey, playingChannel, heldSustain;
-	struct tsf_region* region;
-	double pitchInputTimecents, pitchOutputFactor;
-	double sourceSamplePosition;
-	float  noteGainDB, panFactorLeft, panFactorRight;
-	unsigned int playIndex, loopStart, loopEnd;
-	struct tsf_voice_envelope ampenv, modenv;
-	struct tsf_voice_lowpass lowpass;
-	struct tsf_voice_lfo modlfo, viblfo;
-};
-
-struct tsf_channel
-{
-	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData, sustain;
-	float panOffset, gainDB, pitchRange, tuning;
-};
-
-struct tsf_channels
-{
-	void (*setupVoice)(tsf* f, struct tsf_voice* voice);
-	int channelNum, activeChannel;
-	struct tsf_channel channels[1];
-};
 
 static double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
 static float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
