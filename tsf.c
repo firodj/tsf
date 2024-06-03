@@ -177,8 +177,8 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		{ GEN_UINT_ADD15                   , _TSFREGIONOFFSET(unsigned int, end                  ) }, //12 EndAddrsCoarseOffset
 		{ GEN_INT   | GEN_INT_LIMIT960     , _TSFREGIONOFFSET(         int, modLfoToVolume       ) }, //13 ModLfoToVolume
 		{ 0                                , (0                                                  ) }, //   Unused
-		{ 0                                , (0                                                  ) }, //15 ChorusEffectsSend (unsupported)
-		{ 0                                , (0                                                  ) }, //16 ReverbEffectsSend (unsupported)
+		{ GEN_FLOAT | GEN_FLOAT_MAX1000    , _TSFREGIONOFFSET(       float, chorusSend           ) }, //15 ChorusEffectsSend (unsupported)
+		{ GEN_FLOAT | GEN_FLOAT_MAX1000    , _TSFREGIONOFFSET(       float, reverbSend           ) }, //16 ReverbEffectsSend (unsupported)
 		{ GEN_FLOAT | GEN_FLOAT_LIMITPAN   , _TSFREGIONOFFSET(       float, pan                  ) }, //17 Pan
 		{ 0                                , (0                                                  ) }, //   Unused
 		{ 0                                , (0                                                  ) }, //   Unused
@@ -240,6 +240,8 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 			case GEN_LOOPMODE:   region->loop_mode       = ((amount->wordAmount&3) == 3 ? TSF_LOOPMODE_SUSTAIN : ((amount->wordAmount&3) == 1 ? TSF_LOOPMODE_CONTINUOUS : TSF_LOOPMODE_NONE)); return;
 			case GEN_GROUP:      region->group           = amount->wordAmount;  return;
 			case GEN_KEYCENTER:  region->pitch_keycenter = amount->shortAmount; return;
+			default:
+				TSF_WARN("Skip region gen: %d\n", genOper)
 		}
 	}
 	else //merge regions and clamp values
@@ -347,7 +349,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 		preset->preset = pphdr->preset;
 		preset->regionNum = 0;
 
-		//count regions covered by this preset
+		// Pass-1: Count regions covered by this preset
 		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
 			unsigned char plokey = 0, phikey = 127, plovel = 0, phivel = 127;
@@ -381,7 +383,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 		}
 		tsf_region_clear(&globalRegion, TSF_TRUE);
 
-		// Zones.
+		// Pass-2: Zones.
 		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
 			struct tsf_hydra_pgen *ppgen, *ppgenEnd; struct tsf_hydra_inst *pinst; struct tsf_hydra_ibag *pibag, *pibagEnd; struct tsf_hydra_igen *pigen, *pigenEnd;
@@ -432,6 +434,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 
 								// Fixup sample positions
 								pshdr = &hydra->shdrs[pigen->genAmount.wordAmount];
+								zoneRegion.sampleID = pigen->genAmount.wordAmount;
 								zoneRegion.offset += pshdr->start;
 								zoneRegion.end += pshdr->end;
 								zoneRegion.loop_start += pshdr->startLoop;
@@ -446,13 +449,13 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 
 								preset->regions[region_index] = zoneRegion;
 								region_index++;
-								hadSampleID = 1;
+								hadSampleID++;
 							}
 							else tsf_region_operator(&zoneRegion, pigen->genOper, &pigen->genAmount, TSF_NULL);
 						}
 
 						// Handle instrument's global zone.
-						if (pibag == hydra->ibags + pinst->instBagNdx && !hadSampleID)
+						if (pibag == hydra->ibags + pinst->instBagNdx && hadSampleID == 0)
 							instRegion = zoneRegion;
 
 						// Modulators (TODO)
@@ -970,9 +973,9 @@ static int tsf_register_samples(tsf* res, struct tsf_hydra * hydra) {
 	res->samples = (struct tsf_sample*)TSF_MALLOC(res->sampleNum * sizeof(struct tsf_sample));
 	if (!res->samples) return 0;
 
-	struct tsf_hydra_shdr * shdr = hydra->shdrs;
-	for (int i=0; i < res->sampleNum; i++, shdr++) {
-		struct tsf_sample * sample = &res->samples[i];
+	for (int i=0; i < res->sampleNum; i++) {
+		struct tsf_hydra_shdr *shdr = &hydra->shdrs[i];
+		struct tsf_sample *sample = &res->samples[i];
 		TSF_MEMCPY(sample->sampleName, shdr->sampleName, sizeof(shdr->sampleName));
 		sample->sampleName[sizeof(sample->sampleName) - 1] = '\0';
 		sample->start = shdr->start;

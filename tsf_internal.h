@@ -81,6 +81,8 @@ struct tsf_region
 	int freqModLFO, modLfoToPitch;
 	float delayVibLFO;
 	int freqVibLFO, vibLfoToPitch;
+	float reverbSend, chorusSend;
+	int sampleID;
 };
 
 struct tsf_preset
