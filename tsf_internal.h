@@ -29,6 +29,10 @@ struct tsf
 	float outSampleRate;
 	float globalGainDB;
 	int* refCount;
+
+    unsigned int fontSampleCount;
+    struct tsf_sample * samples;
+    int sampleNum;
 };
 
 enum { TSF_LOOPMODE_NONE, TSF_LOOPMODE_CONTINUOUS, TSF_LOOPMODE_SUSTAIN };
@@ -81,10 +85,19 @@ struct tsf_region
 
 struct tsf_preset
 {
-	tsf_char20 presetName;
+	char presetName[21];
 	tsf_u16 preset, bank;
 	struct tsf_region* regions;
 	int regionNum;
+};
+
+struct tsf_sample
+{
+    char sampleName[21];
+    tsf_u32 start, end, startLoop, endLoop, sampleRate;
+    tsf_u8 originalPitch;
+    tsf_s8 pitchCorrection;
+    tsf_u16 sampleLink, sampleType;
 };
 
 struct tsf_voice

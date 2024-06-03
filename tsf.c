@@ -341,7 +341,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 		}
 
 		preset = &res->presets[sortedIndex];
-		TSF_MEMCPY(preset->presetName, pphdr->presetName, sizeof(preset->presetName));
+		TSF_MEMCPY(preset->presetName, pphdr->presetName, sizeof(pphdr->presetName));
 		preset->presetName[sizeof(preset->presetName)-1] = '\0'; //should be zero terminated in source file but make sure
 		preset->bank = pphdr->bank;
 		preset->preset = pphdr->preset;
@@ -965,6 +965,29 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	if (tmpLowpass.active || dynamicLowpass) v->lowpass = tmpLowpass;
 }
 
+static int tsf_register_samples(tsf* res, struct tsf_hydra * hydra) {
+	res->sampleNum = hydra->shdrNum - 1;
+	res->samples = (struct tsf_sample*)TSF_MALLOC(res->sampleNum * sizeof(struct tsf_sample));
+	if (!res->samples) return 0;
+
+	struct tsf_hydra_shdr * shdr = hydra->shdrs;
+	for (int i=0; i < res->sampleNum; i++, shdr++) {
+		struct tsf_sample * sample = &res->samples[i];
+		TSF_MEMCPY(sample->sampleName, shdr->sampleName, sizeof(shdr->sampleName));
+		sample->sampleName[sizeof(sample->sampleName) - 1] = '\0';
+		sample->start = shdr->start;
+		sample->end = shdr->end;
+		sample->startLoop = shdr->startLoop;
+		sample->endLoop = shdr->endLoop;
+		sample->sampleRate = shdr->sampleRate;
+		sample->originalPitch = shdr->originalPitch;
+		sample->pitchCorrection = shdr->pitchCorrection;
+		sample->sampleLink = shdr->sampleLink;
+		sample->sampleType = shdr->sampleType;
+	}
+	return 1;
+}
+
 TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 {
 	tsf* res = TSF_NULL;
@@ -1054,8 +1077,10 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 		res = (tsf*)TSF_MALLOC(sizeof(tsf));
 		if (res) TSF_MEMSET(res, 0, sizeof(tsf));
 		if (!res || !tsf_load_presets(res, &hydra, smplCount)) goto out_of_memory;
+		if (!res || !tsf_register_samples(res, &hydra)) goto out_of_memory;
 		res->outSampleRate = 44100.0f;
 		res->fontSamples = floatBuffer;
+		res->fontSampleCount = smplCount;
 		floatBuffer = TSF_NULL; // don't free below
 	}
 	if (0)
@@ -1098,6 +1123,7 @@ TSFDEF void tsf_close(tsf* f)
 	if (!f) return;
 	if (!f->refCount || !--(*f->refCount))
 	{
+		TSF_FREE(f->samples);
 		struct tsf_preset *preset = f->presets, *presetEnd = preset + f->presetNum;
 		for (; preset != presetEnd; preset++) TSF_FREE(preset->regions);
 		TSF_FREE(f->presets);
