@@ -87,8 +87,8 @@ static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* str
 static double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
 static float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
 static float tsf_cents2Hertz(float cents) { return 8.176f * TSF_POWF(2.0f, cents / 1200.0f); }
-static float tsf_decibelsToGain(float db) { return (db > -100.f ? TSF_POWF(10.0f, db * 1/40.0f) : 0); }
-static float tsf_gainToDecibels(float gain) { return (gain <= .00001f ? -100.f : (float)(40.0 * TSF_LOG10(gain))); }
+static float tsf_decibelsToGain(float db) { return (db > -200.f ? TSF_POWF(10.0f, db * 1/40.0f) : 0); }
+static float tsf_gainToDecibels(float gain) { return (gain <= .01f ? -200.f : (float)(40.0 * TSF_LOG10(gain))); }
 
 static TSF_BOOL tsf_riffchunk_read(struct tsf_riffchunk* parent, struct tsf_riffchunk* chunk, struct tsf_stream* stream)
 {
@@ -125,6 +125,10 @@ static void tsf_region_clear(struct tsf_region* i, TSF_BOOL for_relative)
 
 	i->delayModLFO = -12000.0f;
 	i->delayVibLFO = -12000.0f;
+
+	i->modulators = NULL;
+	i->modulatorNum = 0;
+	i->sampleID = -1;
 }
 
 static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, union tsf_hydra_genamount* amount, struct tsf_region* merge_region)
@@ -153,8 +157,7 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		GEN_FLOAT_LIMIT1200  = 0x80, //min -1200, max 1200
 		GEN_FLOAT_LIMITPAN   = 0x90, //* .001f, min -.5f, max .5f,
 		GEN_FLOAT_LIMITATTN  = 0xA0, //* .1f, min 0, max 144.0
-		GEN_FLOAT_MAX1000    = 0xB0, //min 0, max 1000
-		GEN_FLOAT_MAX1440    = 0xC0, //min 0, max 1440
+		GEN_FLOAT_LIMITFX    = 0xD0, //* .001f, min 0.0, max 1.0f (1000)
 
 		_GEN_MAX = 59
 	};
@@ -177,8 +180,8 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		{ GEN_UINT_ADD15                   , _TSFREGIONOFFSET(unsigned int, end                  ) }, //12 EndAddrsCoarseOffset
 		{ GEN_INT   | GEN_INT_LIMIT960     , _TSFREGIONOFFSET(         int, modLfoToVolume       ) }, //13 ModLfoToVolume
 		{ 0                                , (0                                                  ) }, //   Unused
-		{ GEN_FLOAT | GEN_FLOAT_MAX1000    , _TSFREGIONOFFSET(       float, chorusSend           ) }, //15 ChorusEffectsSend (unsupported)
-		{ GEN_FLOAT | GEN_FLOAT_MAX1000    , _TSFREGIONOFFSET(       float, reverbSend           ) }, //16 ReverbEffectsSend (unsupported)
+		{ GEN_FLOAT | GEN_FLOAT_LIMITFX    , _TSFREGIONOFFSET(       float, chorusSend           ) }, //15 ChorusEffectsSend (unsupported)
+		{ GEN_FLOAT | GEN_FLOAT_LIMITFX    , _TSFREGIONOFFSET(       float, reverbSend           ) }, //16 ReverbEffectsSend (unsupported)
 		{ GEN_FLOAT | GEN_FLOAT_LIMITPAN   , _TSFREGIONOFFSET(       float, pan                  ) }, //17 Pan
 		{ 0                                , (0                                                  ) }, //   Unused
 		{ 0                                , (0                                                  ) }, //   Unused
@@ -191,7 +194,7 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K8K , _TSFREGIONENVOFFSET(    float, modenv, attack       ) }, //26 AttackModEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K5K , _TSFREGIONENVOFFSET(    float, modenv, hold         ) }, //27 HoldModEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K8K , _TSFREGIONENVOFFSET(    float, modenv, decay        ) }, //28 DecayModEnv
-		{ GEN_FLOAT | GEN_FLOAT_MAX1000    , _TSFREGIONENVOFFSET(    float, modenv, sustain      ) }, //29 SustainModEnv
+		{ GEN_FLOAT | GEN_FLOAT_LIMITFX    , _TSFREGIONENVOFFSET(    float, modenv, sustain      ) }, //29 SustainModEnv (inversed)
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K8K , _TSFREGIONENVOFFSET(    float, modenv, release      ) }, //30 ReleaseModEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT1200  , _TSFREGIONENVOFFSET(    float, modenv, keynumToHold ) }, //31 KeynumToModEnvHold
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT1200  , _TSFREGIONENVOFFSET(    float, modenv, keynumToDecay) }, //32 KeynumToModEnvDecay
@@ -199,14 +202,14 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K8K , _TSFREGIONENVOFFSET(    float, ampenv, attack       ) }, //34 AttackVolEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K5K , _TSFREGIONENVOFFSET(    float, ampenv, hold         ) }, //35 HoldVolEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K8K , _TSFREGIONENVOFFSET(    float, ampenv, decay        ) }, //36 DecayVolEnv
-		{ GEN_FLOAT | GEN_FLOAT_MAX1440    , _TSFREGIONENVOFFSET(    float, ampenv, sustain      ) }, //37 SustainVolEnv
+		{ GEN_FLOAT | GEN_FLOAT_LIMITATTN  , _TSFREGIONENVOFFSET(    float, ampenv, sustain      ) }, //37 SustainVolEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT12K8K , _TSFREGIONENVOFFSET(    float, ampenv, release      ) }, //38 ReleaseVolEnv
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT1200  , _TSFREGIONENVOFFSET(    float, ampenv, keynumToHold ) }, //39 KeynumToVolEnvHold
 		{ GEN_FLOAT | GEN_FLOAT_LIMIT1200  , _TSFREGIONENVOFFSET(    float, ampenv, keynumToDecay) }, //40 KeynumToVolEnvDecay
-		{ 0                                , (0                                                  ) }, //   Instrument (special)
+		{ 0                                , (0                                                  ) }, //41 Instrument (special/pgen)
 		{ 0                                , (0                                                  ) }, //   Reserved
-		{ GEN_KEYRANGE                     , (0                                                  ) }, //43 KeyRange
-		{ GEN_VELRANGE                     , (0                                                  ) }, //44 VelRange
+		{ GEN_KEYRANGE                     , (0                                                  ) }, //43 KeyRange (pgen)
+		{ GEN_VELRANGE                     , (0                                                  ) }, //44 VelRange (pgen)
 		{ GEN_UINT_ADD15                   , _TSFREGIONOFFSET(unsigned int, loop_start           ) }, //45 StartloopAddrsCoarseOffset
 		{ 0                                , (0                                                  ) }, //46 Keynum (special)
 		{ 0                                , (0                                                  ) }, //47 Velocity (special)
@@ -215,7 +218,7 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		{ GEN_UINT_ADD15                   , _TSFREGIONOFFSET(unsigned int, loop_end             ) }, //50 EndloopAddrsCoarseOffset
 		{ GEN_INT                          , _TSFREGIONOFFSET(         int, transpose            ) }, //51 CoarseTune
 		{ GEN_INT                          , _TSFREGIONOFFSET(         int, tune                 ) }, //52 FineTune
-		{ 0                                , (0                                                  ) }, //   SampleID (special)
+		{ 0                                , (0                                                  ) }, //53 SampleID (special/igen)
 		{ GEN_LOOPMODE                     , _TSFREGIONOFFSET(         int, loop_mode            ) }, //54 SampleModes
 		{ 0                                , (0                                                  ) }, //   Reserved
 		{ GEN_INT                          , _TSFREGIONOFFSET(         int, pitch_keytrack       ) }, //56 ScaleTuning
@@ -261,9 +264,8 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 						case GEN_FLOAT_LIMIT12K8K: vfactor =   1.0f; vmin = -12000.0f; vmax = 8000.0f; break;
 						case GEN_FLOAT_LIMIT1200:  vfactor =   1.0f; vmin =  -1200.0f; vmax = 1200.0f; break;
 						case GEN_FLOAT_LIMITPAN:   vfactor = 0.001f; vmin =     -0.5f; vmax =    0.5f; break;
+						case GEN_FLOAT_LIMITFX:    vfactor = 0.001f; vmin =      0.0f; vmax =    1.0f; break;
 						case GEN_FLOAT_LIMITATTN:  vfactor =   0.1f; vmin =      0.0f; vmax =  144.0f; break;
-						case GEN_FLOAT_MAX1000:    vfactor =   1.0f; vmin =      0.0f; vmax = 1000.0f; break;
-						case GEN_FLOAT_MAX1440:    vfactor =   1.0f; vmin =      0.0f; vmax = 1440.0f; break;
 						default: continue;
 					}
 					*val *= vfactor;
@@ -317,6 +319,16 @@ static void tsf_region_envtosecs(struct tsf_envelope* p, TSF_BOOL sustainIsGain)
 	else p->sustain = 1.0f - (p->sustain / 1000.0f);
 }
 
+static void tsf_region_copy(struct tsf_region *dst, const struct tsf_region * src) {
+	if (dst->modulators) TSF_FREE(dst->modulators);
+	*dst = *src;
+	if (dst->modulatorNum) {
+		dst->modulators = (struct tsf_modulator*)TSF_MALLOC(dst->modulatorNum * sizeof(struct tsf_modulator));
+		TSF_MEMCPY(dst->modulators, src->modulators, src->modulatorNum * sizeof(struct tsf_modulator));
+	} else
+		dst->modulators = NULL;
+}
+
 static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int fontSampleCount)
 {
 	enum { GenInstrument = 41, GenKeyRange = 43, GenVelRange = 44, GenSampleID = 53 };
@@ -348,24 +360,41 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 		preset->bank = pphdr->bank;
 		preset->preset = pphdr->preset;
 		preset->regionNum = 0;
-
+#if WANT_LEARN ==  1
+		printf("> presets[%d] %s (bags:%d)\n", sortedIndex, preset->presetName, pphdr[1].presetBagNdx-pphdr->presetBagNdx);
+#endif
 		// Pass-1: Count regions covered by this preset
 		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
+#if WANT_LEARN ==  1
+			printf(">\tpbag [%d]\n", (uintptr_t)(ppbag-(hydra->pbags + pphdr->presetBagNdx)));
+#endif
 			unsigned char plokey = 0, phikey = 127, plovel = 0, phivel = 127;
 			struct tsf_hydra_pgen *ppgen, *ppgenEnd; struct tsf_hydra_inst *pinst; struct tsf_hydra_ibag *pibag, *pibagEnd; struct tsf_hydra_igen *pigen, *pigenEnd;
 			for (ppgen = hydra->pgens + ppbag->genNdx, ppgenEnd = hydra->pgens + ppbag[1].genNdx; ppgen != ppgenEnd; ppgen++)
 			{
+#if WANT_LEARN ==  1
+				printf(">\t\tpgen [%d] %d %x\n", (uintptr_t)(ppgen-(hydra->pgens + ppbag->genNdx)), ppgen->genOper, ppgen->genAmount.wordAmount);
+#endif
 				if (ppgen->genOper == GenKeyRange) { plokey = ppgen->genAmount.range.lo; phikey = ppgen->genAmount.range.hi; continue; }
 				if (ppgen->genOper == GenVelRange) { plovel = ppgen->genAmount.range.lo; phivel = ppgen->genAmount.range.hi; continue; }
 				if (ppgen->genOper != GenInstrument) continue;
 				if (ppgen->genAmount.wordAmount >= hydra->instNum) continue;
 				pinst = hydra->insts + ppgen->genAmount.wordAmount;
+#if WANT_LEARN ==  1
+				printf(">\t\t= inst %s (bags:%d)\n", pinst->instName, pinst[1].instBagNdx-pinst->instBagNdx);
+#endif
 				for (pibag = hydra->ibags + pinst->instBagNdx, pibagEnd = hydra->ibags + pinst[1].instBagNdx; pibag != pibagEnd; pibag++)
 				{
+#if WANT_LEARN ==  1
+					printf(">\t\t\tibag [%d]\n", (uintptr_t)(pibag-(hydra->ibags + pinst->instBagNdx)));
+#endif
 					unsigned char ilokey = 0, ihikey = 127, ilovel = 0, ihivel = 127;
 					for (pigen = hydra->igens + pibag->instGenNdx, pigenEnd = hydra->igens + pibag[1].instGenNdx; pigen != pigenEnd; pigen++)
 					{
+#if WANT_LEARN ==  1
+						printf(">\t\t\t\tigen [%d] %d %x\n", (uintptr_t)(pigen-(hydra->igens + pibag->instGenNdx)), pigen->genOper, pigen->genAmount.wordAmount);
+#endif
 						if (pigen->genOper == GenKeyRange) { ilokey = pigen->genAmount.range.lo; ihikey = pigen->genAmount.range.hi; continue; }
 						if (pigen->genOper == GenVelRange) { ilovel = pigen->genAmount.range.lo; ihivel = pigen->genAmount.range.hi; continue; }
 						if (pigen->genOper == GenSampleID && ihikey >= plokey && ilokey <= phikey && ihivel >= plovel && ilovel <= phivel) preset->regionNum++;
@@ -387,8 +416,10 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
 			struct tsf_hydra_pgen *ppgen, *ppgenEnd; struct tsf_hydra_inst *pinst; struct tsf_hydra_ibag *pibag, *pibagEnd; struct tsf_hydra_igen *pigen, *pigenEnd;
-			struct tsf_region presetRegion = globalRegion;
+			struct tsf_region presetRegion;
 			int hadGenInstrument = 0;
+			tsf_region_clear(&presetRegion, TSF_FALSE);
+			tsf_region_copy(&presetRegion, &globalRegion);
 
 			// Generators.
 			for (ppgen = hydra->pgens + ppbag->genNdx, ppgenEnd = hydra->pgens + ppbag[1].genNdx; ppgen != ppgenEnd; ppgen++)
@@ -396,7 +427,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 				// Instrument.
 				if (ppgen->genOper == GenInstrument)
 				{
-					struct tsf_region instRegion;
+					struct tsf_region instRegion;	// temporarilyy as a base for other region.
 					tsf_u16 whichInst = ppgen->genAmount.wordAmount;
 					if (whichInst >= hydra->instNum) continue;
 
@@ -405,7 +436,43 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 					for (pibag = hydra->ibags + pinst->instBagNdx, pibagEnd = hydra->ibags + pinst[1].instBagNdx; pibag != pibagEnd; pibag++)
 					{
 						// Generators.
-						struct tsf_region zoneRegion = instRegion;
+						struct tsf_region zoneRegion;
+						tsf_region_clear(&zoneRegion, TSF_FALSE);
+						tsf_region_copy(&zoneRegion, &instRegion);
+
+						// Modulators
+						struct tsf_hydra_imod *pimod, *pimodEnd;
+						int modulatorNum = pibag[1].instModNdx - pibag->instModNdx;
+						if (modulatorNum) {
+							zoneRegion.modulators = (struct tsf_modulator*)TSF_REALLOC(zoneRegion.modulators, (zoneRegion.modulatorNum+modulatorNum) * sizeof(struct tsf_modulator));
+							struct tsf_modulator * modulator = zoneRegion.modulators + zoneRegion.modulatorNum;
+
+							for (pimod = hydra->imods + pibag->instModNdx, pimodEnd = hydra->imods + pibag[1].instModNdx; pimod != pimodEnd;
+								pimod++, modulator++, zoneRegion.modulatorNum++)
+							{
+								modulator->modSrcOper = pimod->modSrcOper;
+								modulator->modDestOper = pimod->modDestOper;
+								modulator->modAmtSrcOper = pimod->modAmtSrcOper;
+								modulator->modAmount = pimod->modAmount;
+								modulator->modTransOper = pimod->modTransOper;
+	#if WANT_LEARN ==  1
+								printf(">\t\t\t\timod [%d] src:%d dst:%d\n", (uintptr_t)(pimod-(hydra->imods + pibag->instModNdx)), pimod->modSrcOper, pimod->modDestOper);
+
+								int idx = pimod->modSrcOper & 0x7F;
+								int cc = (pimod->modSrcOper & 0x80) == 0x80;
+								int d = (pimod->modSrcOper & 0x100) == 0x100;
+								int p = (pimod->modSrcOper & 0x200) == 0x200;
+								int typ = (pimod->modSrcOper & 0xFC00) >> 10;
+
+								printf(">\t\t\t\t= idx = %d, cc = %d (0=general, 1=midi ctrl), d = %d, p = %d, typ = %d (0=linear,1=concave,2=convex,3=switch)\n", idx, cc, d, p, typ);
+								printf(">\t\t\t\t= dest gen = %d, ", pimod->modDestOper);
+								printf("amount = %d, ", pimod->modAmount);
+								printf("amount src = %d (always 0, no-controller), ", pimod->modAmtSrcOper);
+								printf("trans = %d (0=linear, 2=abs)\n", pimod->modTransOper);
+	#endif
+							}
+						}
+
 						int hadSampleID = 0;
 						for (pigen = hydra->igens + pibag->instGenNdx, pigenEnd = hydra->igens + pibag[1].instGenNdx; pigen != pigenEnd; pigen++)
 						{
@@ -447,31 +514,47 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 								if (zoneRegion.end && zoneRegion.end < fontSampleCount) zoneRegion.end++;
 								else zoneRegion.end = fontSampleCount;
 
-								preset->regions[region_index] = zoneRegion;
+								tsf_region_clear(&preset->regions[region_index], TSF_FALSE);
+								tsf_region_copy(&preset->regions[region_index], &zoneRegion);
 								region_index++;
 								hadSampleID++;
 							}
 							else tsf_region_operator(&zoneRegion, pigen->genOper, &pigen->genAmount, TSF_NULL);
 						}
 
-						// Handle instrument's global zone.
-						if (pibag == hydra->ibags + pinst->instBagNdx && hadSampleID == 0)
-							instRegion = zoneRegion;
+						// Handle instrument's global zone. only once.
+						if (pibag == hydra->ibags + pinst->instBagNdx && hadSampleID == 0) {
+							tsf_region_copy(&instRegion, &zoneRegion);
+						}
 
-						// Modulators (TODO)
-						//if (ibag->instModNdx < ibag[1].instModNdx) addUnsupportedOpcode("any modulator");
+						if (zoneRegion.modulators)
+							TSF_FREE(zoneRegion.modulators);
 					}
+
+					if (instRegion.modulators)
+						TSF_FREE(instRegion.modulators);
 					hadGenInstrument = 1;
 				}
 				else tsf_region_operator(&presetRegion, ppgen->genOper, &ppgen->genAmount, TSF_NULL);
 			}
 
 			// Modulators (TODO)
-			//if (pbag->modNdx < pbag[1].modNdx) addUnsupportedOpcode("any modulator");
+			struct tsf_hydra_pmod *ppmod, *ppmodEnd;
+			// In SoundFont 2.00, no modulators have yet been defined, and the PMOD sub-chunk will always consist
+			// of ten zero valued bytes.
+			for (ppmod = hydra->pmods + ppbag->modNdx, ppmodEnd = hydra->pmods + ppbag[1].modNdx; ppmod != ppmodEnd; ppmod++) {
+#if WANT_LEARN ==  1
+				printf(">\t\tpmod [%d] src:%d dest:%d\n", (uintptr_t)(ppmod-(hydra->pmods + ppbag->modNdx)), ppmod->modSrcOper, ppmod->modDestOper);
+#endif
+			}
 
 			// Handle preset's global zone.
-			if (ppbag == hydra->pbags + pphdr->presetBagNdx && !hadGenInstrument)
-				globalRegion = presetRegion;
+			if (ppbag == hydra->pbags + pphdr->presetBagNdx && !hadGenInstrument) {
+				tsf_region_copy(&globalRegion, &presetRegion);
+			}
+
+			if (presetRegion.modulators)
+				TSF_FREE(presetRegion.modulators);
 		}
 	}
 	return 1;
@@ -1128,7 +1211,11 @@ TSFDEF void tsf_close(tsf* f)
 	{
 		TSF_FREE(f->samples);
 		struct tsf_preset *preset = f->presets, *presetEnd = preset + f->presetNum;
-		for (; preset != presetEnd; preset++) TSF_FREE(preset->regions);
+		for (; preset != presetEnd; preset++) {
+			for (int r = 0; r != preset->regionNum; r++)
+				if (preset->regions[r].modulators) TSF_FREE(preset->regions[r].modulators);
+			TSF_FREE(preset->regions);
+		}
 		TSF_FREE(f->presets);
 		TSF_FREE(f->fontSamples);
 		TSF_FREE(f->refCount);

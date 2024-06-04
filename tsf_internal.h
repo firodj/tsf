@@ -66,6 +66,24 @@ struct tsf_voice_envelope { float level, slope; int samplesUntilNextSegment; sho
 struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
 struct tsf_voice_lfo { int samplesUntil; float level, delta; };
 
+struct tsf_modulator
+{
+	union {
+		unsigned int modSrcOper;
+		struct {
+			unsigned char index:7;
+			unsigned char cc:1;
+			unsigned char d:1;
+			unsigned char p:1;
+			unsigned char type:6;
+		} modSrcOperDetails;
+	};
+	unsigned int modDestOper;
+	int modAmount;
+	unsigned int modAmtSrcOper;
+	unsigned int modTransOper;
+};
+
 struct tsf_region
 {
 	int loop_mode;
@@ -83,6 +101,8 @@ struct tsf_region
 	int freqVibLFO, vibLfoToPitch;
 	float reverbSend, chorusSend;
 	int sampleID;
+	int modulatorNum;
+	struct tsf_modulator* modulators;
 };
 
 struct tsf_preset
