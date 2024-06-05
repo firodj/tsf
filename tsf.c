@@ -1771,9 +1771,11 @@ TSFDEF int tsf_channel_get_preset_index(tsf* f, int channel)
 	return (f->channels && channel < f->channels->channelNum ? f->channels->channels[channel].presetIndex : 0);
 }
 
-TSFDEF int tsf_channel_get_preset_bank(tsf* f, int channel)
+TSFDEF int tsf_channel_get_preset_bank(tsf* f, int channel, int *flag)
 {
-	return (f->channels && channel < f->channels->channelNum ? (f->channels->channels[channel].bank & 0x7FFF) : 0);
+	int bank = (f->channels && channel < f->channels->channelNum ? f->channels->channels[channel].bank : 0);
+	if (flag) *flag = bank & 0x8000;
+	return bank & 0x7FFF;
 }
 
 TSFDEF int tsf_channel_get_preset_number(tsf* f, int channel)

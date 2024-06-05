@@ -235,7 +235,7 @@ TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int con
 
 // Get current values set on the channels
 TSFDEF int tsf_channel_get_preset_index(tsf* f, int channel);
-TSFDEF int tsf_channel_get_preset_bank(tsf* f, int channel);
+TSFDEF int tsf_channel_get_preset_bank(tsf* f, int channel, int *flag CPP_DEFAULT0);
 TSFDEF int tsf_channel_get_preset_number(tsf* f, int channel);
 TSFDEF float tsf_channel_get_pan(tsf* f, int channel);
 TSFDEF float tsf_channel_get_volume(tsf* f, int channel);
