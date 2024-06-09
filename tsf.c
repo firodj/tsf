@@ -130,6 +130,7 @@ static void tsf_region_clear(struct tsf_region* i, TSF_BOOL for_relative)
 	i->modulatorNum = 0;
 	i->sampleID = -1;
 	i->instrumentID = -1;
+	i->vel2fc = -2400;
 }
 
 static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, union tsf_hydra_genamount* amount, struct tsf_region* merge_region)
@@ -442,6 +443,9 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 						tsf_region_copy(&zoneRegion, &instRegion);
 
 						// Modulators
+						// Modulators in the IMOD sub-chunk are absolute. This means that an IMOD modulator replaces, rather than adds to, a
+						// default modulator. However the effect of a modulator on a generator is additive, IE the output of a modulator adds to a
+                        // generator value.
 						struct tsf_hydra_imod *pimod, *pimodEnd;
 						int modulatorNum = pibag[1].instModNdx - pibag->instModNdx;
 						if (modulatorNum) {
@@ -525,6 +529,14 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 								if (zoneRegion.end && zoneRegion.end < fontSampleCount) zoneRegion.end++;
 								else zoneRegion.end = fontSampleCount;
 
+								// Quickfix Modulator
+								for (int m=0; m<zoneRegion.modulatorNum; m++) {
+									if (zoneRegion.modulators[m].modSrcOper == 0x0102) {
+										zoneRegion.vel2fc = zoneRegion.modulators[m].modAmount;
+										//printf("> replace vel2fc for %s with %d\n", preset->presetName, zoneRegion.vel2fc);
+									}
+								}
+
 								tsf_region_clear(&preset->regions[region_index], TSF_FALSE);
 								tsf_region_copy(&preset->regions[region_index], &zoneRegion);
 								region_index++;
@@ -551,8 +563,8 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 
 			// Modulators (TODO)
 			struct tsf_hydra_pmod *ppmod, *ppmodEnd;
-			// In SoundFont 2.00, no modulators have yet been defined, and the PMOD sub-chunk will always consist
-			// of ten zero valued bytes.
+			// Modulators in the PMOD sub-chunk act as additively relative modulators with respect to those in the IMOD sub-chunk. In
+            // other words, a PMOD modulator can increase or decrease the amount of an IMOD modulator.
 			for (ppmod = hydra->pmods + ppbag->modNdx, ppmodEnd = hydra->pmods + ppbag[1].modNdx; ppmod != ppmodEnd; ppmod++) {
 #if WANT_LEARN ==  1
 				printf(">\t\tpmod [%d] src:%d dest:%d\n", (uintptr_t)(ppmod-(hydra->pmods + ppbag->modNdx)), ppmod->modSrcOper, ppmod->modDestOper);
@@ -1391,8 +1403,11 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		// Setup lowpass filter.
 		// Apply default modulator: MIDI Note-On Velocity to Filter Cutoff (section 8.4.2)
 		// TODO: store to voice, will be used for base dynamicLowpass
-		int tmpInitialFilterFc = region->initialFilterFc + (-2400 * (1.0f - vel));
-		if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
+		int tmpInitialFilterFc = region->initialFilterFc;
+		if (region->vel2fc) {
+			tmpInitialFilterFc += region->vel2fc * (1.0f - vel);
+			if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
+		}
 
 		lowpassFc = (tmpInitialFilterFc < 13500 ? tsf_cents2Hertz((float)tmpInitialFilterFc) / f->outSampleRate : 1.0f);
 		lowpassFilterQDB = region->initialFilterQ / 10.0f;

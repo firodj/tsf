@@ -107,6 +107,7 @@ struct tsf_region
 	float reverbSend, chorusSend;
 	int sampleID, instrumentID;
 	int modulatorNum;
+	int vel2fc;
 	struct tsf_modulator* modulators;
 };
 
