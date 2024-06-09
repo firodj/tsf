@@ -456,7 +456,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 								modulator->modAmtSrcOper = pimod->modAmtSrcOper;
 								modulator->modAmount = pimod->modAmount;
 								modulator->modTransOper = pimod->modTransOper;
-	#if WANT_LEARN ==  1
+	#if WANT_LEARN == 1
 								printf(">\t\t\t\timod [%d] src:%d dst:%d\n", (uintptr_t)(pimod-(hydra->imods + pibag->instModNdx)), pimod->modSrcOper, pimod->modDestOper);
 
 								int idx = pimod->modSrcOper & 0x7F;
@@ -465,10 +465,19 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 								int p = (pimod->modSrcOper & 0x200) == 0x200;
 								int typ = (pimod->modSrcOper & 0xFC00) >> 10;
 
-								printf(">\t\t\t\t= idx = %d, cc = %d (0=general, 1=midi ctrl), d = %d, p = %d, typ = %d (0=linear,1=concave,2=convex,3=switch)\n", idx, cc, d, p, typ);
+								printf(">\t\t\t\t= src 1 idx = %d, cc = %d (0=general, 1=midi ctrl), d = %d, p = %d, typ = %d (0=linear,1=concave,2=convex,3=switch)\n",
+									idx, cc, d, p, typ);
+
+								if (pimod->modAmtSrcOper) {
+									int idx2 = pimod->modAmtSrcOper & 0x7F;
+									int cc2 = (pimod->modAmtSrcOper & 0x80) == 0x80;
+									int d2 = (pimod->modAmtSrcOper & 0x100) == 0x100;
+									int p2 = (pimod->modAmtSrcOper & 0x200) == 0x200;
+									int typ2 = (pimod->modAmtSrcOper & 0xFC00) >> 10;
+									printf(">\t\t\t\t= src 2 idx = %d, cc = %d (0=general, 1=midi ctrl), d = %d, p = %d, typ = %d (0=linear,1=concave,2=convex,3=switch)\n", idx2, cc2, d2, p2, typ2);
+								}
 								printf(">\t\t\t\t= dest gen = %d, ", pimod->modDestOper);
 								printf("amount = %d, ", pimod->modAmount);
-								printf("amount src = %d (always 0, no-controller), ", pimod->modAmtSrcOper);
 								printf("trans = %d (0=linear, 2=abs)\n", pimod->modTransOper);
 	#endif
 							}
@@ -957,7 +966,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 		if (dynamicLowpass)
 		{
 			float fres = tmpInitialFilterFc + v->modlfo.level * tmpModLfoToFilterFc + v->modenv.level * tmpModEnvToFilterFc;
-			float lowpassFc = (fres <= 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
+			float lowpassFc = (fres < 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
 			tmpLowpass.active = (lowpassFc < 0.499f);
 			if (tmpLowpass.active) tsf_voice_lowpass_setup(&tmpLowpass, lowpassFc);
 		}
@@ -1352,6 +1361,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->playingKey = key;
 		voice->playIndex = voicePlayIndex;
 		voice->heldSustain = 0;
+		// Apply default modulator: MIDI Note-On Velocity to Initial Attenuation (section 8.4.1)
 		voice->noteGainDB = f->globalGainDB - region->attenuation - tsf_gainToDecibels(1.0f / vel);
 
 		if (f->channels)
@@ -1379,7 +1389,12 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		tsf_voice_envelope_setup(&voice->modenv, &region->modenv, key, midiVelocity, TSF_FALSE, f->outSampleRate);
 
 		// Setup lowpass filter.
-		lowpassFc = (region->initialFilterFc <= 13500 ? tsf_cents2Hertz((float)region->initialFilterFc) / f->outSampleRate : 1.0f);
+		// Apply default modulator: MIDI Note-On Velocity to Filter Cutoff (section 8.4.2)
+		// TODO: store to voice, will be used for base dynamicLowpass
+		int tmpInitialFilterFc = region->initialFilterFc + (-2400 * (1.0f - vel));
+		if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
+
+		lowpassFc = (tmpInitialFilterFc < 13500 ? tsf_cents2Hertz((float)tmpInitialFilterFc) / f->outSampleRate : 1.0f);
 		lowpassFilterQDB = region->initialFilterQ / 10.0f;
 		voice->lowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 		voice->lowpass.z1 = voice->lowpass.z2 = 0;
