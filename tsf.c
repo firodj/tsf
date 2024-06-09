@@ -978,7 +978,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 		if (dynamicLowpass)
 		{
 			float fres = tmpInitialFilterFc + v->modlfo.level * tmpModLfoToFilterFc + v->modenv.level * tmpModEnvToFilterFc;
-			float lowpassFc = (fres < 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
+			float lowpassFc = (fres <= 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
 			tmpLowpass.active = (lowpassFc < 0.499f);
 			if (tmpLowpass.active) tsf_voice_lowpass_setup(&tmpLowpass, lowpassFc);
 		}
@@ -1409,7 +1409,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 			if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
 		}
 
-		lowpassFc = (tmpInitialFilterFc < 13500 ? tsf_cents2Hertz((float)tmpInitialFilterFc) / f->outSampleRate : 1.0f);
+		lowpassFc = (tmpInitialFilterFc <= 13500 ? tsf_cents2Hertz((float)tmpInitialFilterFc) / f->outSampleRate : 1.0f);
 		lowpassFilterQDB = region->initialFilterQ / 10.0f;
 		voice->lowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 		voice->lowpass.z1 = voice->lowpass.z2 = 0;
