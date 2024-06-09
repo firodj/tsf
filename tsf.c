@@ -129,6 +129,7 @@ static void tsf_region_clear(struct tsf_region* i, TSF_BOOL for_relative)
 	i->modulators = NULL;
 	i->modulatorNum = 0;
 	i->sampleID = -1;
+	i->instrumentID = -1;
 }
 
 static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, union tsf_hydra_genamount* amount, struct tsf_region* merge_region)
@@ -501,6 +502,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 
 								// Fixup sample positions
 								pshdr = &hydra->shdrs[pigen->genAmount.wordAmount];
+								zoneRegion.instrumentID = whichInst;
 								zoneRegion.sampleID = pigen->genAmount.wordAmount;
 								zoneRegion.offset += pshdr->start;
 								zoneRegion.end += pshdr->end;

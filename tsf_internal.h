@@ -100,7 +100,7 @@ struct tsf_region
 	float delayVibLFO;
 	int freqVibLFO, vibLfoToPitch;
 	float reverbSend, chorusSend;
-	int sampleID;
+	int sampleID, instrumentID;
 	int modulatorNum;
 	struct tsf_modulator* modulators;
 };
