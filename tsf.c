@@ -84,11 +84,11 @@ static void tsf_hydra_read_igen(struct tsf_hydra_igen* i, struct tsf_stream* str
 static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* stream) { TSFR(sampleName) TSFR(start) TSFR(end) TSFR(startLoop) TSFR(endLoop) TSFR(sampleRate) TSFR(originalPitch) TSFR(pitchCorrection) TSFR(sampleLink) TSFR(sampleType) }
 #undef TSFR
 
-static double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
-static float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
-static float tsf_cents2Hertz(float cents) { return 8.176f * TSF_POWF(2.0f, cents / 1200.0f); }
-static float tsf_decibelsToGain(float db) { return (db > -200.f ? TSF_POWF(10.0f, db * 1/40.0f) : 0); }
-static float tsf_gainToDecibels(float gain) { return (gain <= .01f ? -200.f : (float)(40.0 * TSF_LOG10(gain))); }
+double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
+float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
+float tsf_cents2Hertz(float cents) { return 8.176f * TSF_POWF(2.0f, cents / 1200.0f); }
+float tsf_decibelsToGain(float db) { return (db > -200.f ? TSF_POWF(10.0f, db * 1/40.0f) : 0); }
+float tsf_gainToDecibels(float gain) { return (gain <= .01f ? -200.f : (float)(40.0 * TSF_LOG10(gain))); }
 
 static TSF_BOOL tsf_riffchunk_read(struct tsf_riffchunk* parent, struct tsf_riffchunk* chunk, struct tsf_stream* stream)
 {

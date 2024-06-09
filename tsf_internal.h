@@ -66,21 +66,26 @@ struct tsf_voice_envelope { float level, slope; int samplesUntilNextSegment; sho
 struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
 struct tsf_voice_lfo { int samplesUntil; float level, delta; };
 
+struct tsf_modoper {
+	unsigned char index:7;
+	unsigned char cc:1; // cc=0=index is general control; cc=1=index is midi control
+	unsigned char d:1; // d=0=positive (0 -> 127); d=1=negative (127 -> 0)
+	unsigned char p:1; // p=0=unipolar(0 -> 1); p=1=bipolar(-1 -> +1)
+	unsigned char type:6; // 0=linear, 1=concave, 2=convex, 4=switch
+};
+
 struct tsf_modulator
 {
 	union {
 		unsigned int modSrcOper;
-		struct {
-			unsigned char index:7;
-			unsigned char cc:1;
-			unsigned char d:1;
-			unsigned char p:1;
-			unsigned char type:6;
-		} modSrcOperDetails;
+		struct tsf_modoper modSrcOperDetails;
 	};
 	unsigned int modDestOper;
 	int modAmount;
-	unsigned int modAmtSrcOper;
+	union {
+		unsigned int modAmtSrcOper;
+		struct tsf_modoper modAmtSrcOperDetails;
+	};
 	unsigned int modTransOper;
 };
 
@@ -148,6 +153,11 @@ struct tsf_channels
 	struct tsf_channel channels[1];
 };
 
+double tsf_timecents2Secsd(double timecents);
+float tsf_timecents2Secsf(float timecents);
+float tsf_cents2Hertz(float cents);
+float tsf_decibelsToGain(float db);
+float tsf_gainToDecibels(float gain);
 
 #ifdef __cplusplus
 }
