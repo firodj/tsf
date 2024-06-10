@@ -136,6 +136,7 @@ struct tsf_voice
 	double sourceSamplePosition;
 	float  noteGainDB, panFactorLeft, panFactorRight;
 	unsigned int playIndex, loopStart, loopEnd;
+	float filterFc, filterQ, initialFilterFc;
 	struct tsf_voice_envelope ampenv, modenv;
 	struct tsf_voice_lowpass lowpass;
 	struct tsf_voice_lfo modlfo, viblfo;
@@ -144,7 +145,8 @@ struct tsf_voice
 struct tsf_channel
 {
 	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData, sustain;
-	float panOffset, gainDB, pitchRange, tuning;
+	unsigned short midiQ, midiFc;
+	float panOffset, gainDB, pitchRange, tuning, filterFc, filterQ;
 };
 
 struct tsf_channels

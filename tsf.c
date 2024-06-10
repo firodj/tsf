@@ -36,6 +36,9 @@
 
 #define TSF_FourCCEquals(value1, value2) (value1[0] == value2[0] && value1[1] == value2[1] && value1[2] == value2[2] && value1[3] == value2[3])
 
+#define TSF_CC74_AMOUNT 9600
+#define TSF_CC71_AMOUNT 960
+
 #ifndef TSF_NO_STDIO
 static int tsf_stream_stdio_read(FILE* f, void* ptr, unsigned int size) { return (int)fread(ptr, 1, size, f); }
 static int tsf_stream_stdio_skip(FILE* f, unsigned int count) { return !fseek(f, count, SEEK_CUR); }
@@ -950,8 +953,8 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	double tmpSourceSamplePosition = v->sourceSamplePosition;
 	struct tsf_voice_lowpass tmpLowpass = v->lowpass;
 
-	TSF_BOOL dynamicLowpass = (region->modLfoToFilterFc || region->modEnvToFilterFc);
-	float tmpSampleRate = f->outSampleRate, tmpInitialFilterFc, tmpModLfoToFilterFc, tmpModEnvToFilterFc;
+	TSF_BOOL dynamicLowpass = (region->modLfoToFilterFc || region->modEnvToFilterFc || v->filterFc != 0.0 || v->filterQ != 0.0);
+	float tmpSampleRate = f->outSampleRate, tmpInitialFilterFc, tmpInitialFilterQ, tmpModLfoToFilterFc, tmpModEnvToFilterFc;
 
 	TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch);
 	double pitchRatio;
@@ -960,7 +963,18 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	TSF_BOOL dynamicGain = (region->modLfoToVolume != 0);
 	float noteGain = 0, tmpModLfoToVolume;
 
-	if (dynamicLowpass) tmpInitialFilterFc = (float)region->initialFilterFc, tmpModLfoToFilterFc = (float)region->modLfoToFilterFc, tmpModEnvToFilterFc = (float)region->modEnvToFilterFc;
+	if (dynamicLowpass) {
+		tmpModLfoToFilterFc = (float)region->modLfoToFilterFc;
+		tmpModEnvToFilterFc = (float)region->modEnvToFilterFc;
+
+		tmpInitialFilterFc = v->initialFilterFc + TSF_CC74_AMOUNT * v->filterFc;
+		if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
+		else if (tmpInitialFilterFc > 13500) tmpInitialFilterFc = 13500;
+
+		tmpInitialFilterQ = region->initialFilterQ + TSF_CC71_AMOUNT * v->filterQ;
+		if (tmpInitialFilterQ < 0) tmpInitialFilterQ = 0;
+		else if (tmpInitialFilterQ > 960) tmpInitialFilterQ = 960;
+	}
 	else tmpInitialFilterFc = 0, tmpModLfoToFilterFc = 0, tmpModEnvToFilterFc = 0;
 
 	if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
@@ -979,6 +993,8 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 		{
 			float fres = tmpInitialFilterFc + v->modlfo.level * tmpModLfoToFilterFc + v->modenv.level * tmpModEnvToFilterFc;
 			float lowpassFc = (fres <= 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
+			float lowpassFilterQDB = tmpInitialFilterQ / 10.0f;
+			tmpLowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 			tmpLowpass.active = (lowpassFc < 0.499f);
 			if (tmpLowpass.active) tsf_voice_lowpass_setup(&tmpLowpass, lowpassFc);
 		}
@@ -1386,6 +1402,8 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 			// The SFZ spec is silent about the pan curve, but a 3dB pan law seems common. This sqrt() curve matches what Dimension LE does; Alchemy Free seems closer to sin(adjustedPan * pi/2).
 			voice->panFactorLeft  = TSF_SQRTF(0.5f - region->pan);
 			voice->panFactorRight = TSF_SQRTF(0.5f + region->pan);
+			voice->filterFc = 0;
+			voice->filterQ = 0;
 		}
 
 		// Offset/end.
@@ -1401,16 +1419,23 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		tsf_voice_envelope_setup(&voice->modenv, &region->modenv, key, midiVelocity, TSF_FALSE, f->outSampleRate);
 
 		// Setup lowpass filter.
+		voice->initialFilterFc = region->initialFilterFc;
+
 		// Apply default modulator: MIDI Note-On Velocity to Filter Cutoff (section 8.4.2)
 		// TODO: store to voice, will be used for base dynamicLowpass
-		int tmpInitialFilterFc = region->initialFilterFc;
-		if (region->vel2fc) {
-			tmpInitialFilterFc += region->vel2fc * (1.0f - vel);
-			if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
-		}
+		if (region->vel2fc)
+			voice->initialFilterFc += region->vel2fc * (1.0f - vel);
 
-		lowpassFc = (tmpInitialFilterFc <= 13500 ? tsf_cents2Hertz((float)tmpInitialFilterFc) / f->outSampleRate : 1.0f);
-		lowpassFilterQDB = region->initialFilterQ / 10.0f;
+		int tmpInitialFilterFc = voice->initialFilterFc + TSF_CC74_AMOUNT * voice->filterFc;
+		if (tmpInitialFilterFc < 1500) tmpInitialFilterFc = 1500;
+		else if (tmpInitialFilterFc > 13500) tmpInitialFilterFc = 13500;
+
+		int tmpInitialFilterQ = region->initialFilterQ + TSF_CC71_AMOUNT * voice->filterQ;
+		if (tmpInitialFilterQ < 0) tmpInitialFilterQ = 0;
+		else if (tmpInitialFilterQ > 960) tmpInitialFilterQ = 960;
+
+		lowpassFc = (tmpInitialFilterFc <= 13500 ? tsf_cents2Hertz(tmpInitialFilterFc) / f->outSampleRate : 1.0f);
+		lowpassFilterQDB = tmpInitialFilterQ / 10.0f;
 		voice->lowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 		voice->lowpass.z1 = voice->lowpass.z2 = 0;
 		voice->lowpass.active = (lowpassFc < 0.499f);
@@ -1516,6 +1541,8 @@ static void tsf_channel_setup_voice(tsf* f, struct tsf_voice* v)
 	float newpan = v->region->pan + c->panOffset;
 	v->playingChannel = f->channels->activeChannel;
 	v->noteGainDB += c->gainDB;
+	v->filterFc = c->filterFc;
+	v->filterQ = c->filterQ;
 	tsf_voice_calcpitchratio(v, (c->pitchWheel == 8192 ? c->tuning : ((c->pitchWheel / 16383.0f * c->pitchRange * 2.0f) - c->pitchRange + c->tuning)), f->outSampleRate);
 	if      (newpan <= -0.5f) { v->panFactorLeft = 1.0f; v->panFactorRight = 0.0f; }
 	else if (newpan >=  0.5f) { v->panFactorLeft = 0.0f; v->panFactorRight = 1.0f; }
@@ -1551,9 +1578,13 @@ static struct tsf_channel* tsf_channel_init(tsf* f, int channel)
 		c->midiRPN = 0xFFFF;
 		c->midiData = 0;
 		c->panOffset = 0.0f;
+		c->filterFc = 0.0f;
+		c->filterQ = 0.0f;
 		c->gainDB = 0.0f;
 		c->pitchRange = 2.0f;
 		c->tuning = 0.0f;
+		c->midiFc = 0x40;
+		c->midiQ = 0x40;
 	}
 	return &f->channels->channels[channel];
 }
@@ -1694,6 +1725,23 @@ TSFDEF int tsf_channel_set_sustain(tsf* f, int channel, int sustain)
 	return 1;
 }
 
+TSFDEF int tsf_channel_set_filter(tsf* f, int channel, float fc, float q)
+{
+	struct tsf_voice *v, *vEnd;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
+	for (v = f->voices, vEnd = v + f->voiceNum; v != vEnd; v++)
+		if (v->playingChannel == channel && v->playingPreset != -1)
+		{
+			v->filterFc = fc;
+			v->filterQ = q;
+		}
+	c->filterFc = fc;
+	c->filterQ = q;
+	return 1;
+}
+
+
 TSFDEF int tsf_channel_note_on(tsf* f, int channel, int key, float vel)
 {
 	if (!f->channels || channel >= f->channels->channelNum) return 1;
@@ -1769,6 +1817,8 @@ TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int con
 		case  98 /*NRPN_LSB*/        : c->midiRPN = 0xFFFF; return 1;
 		case  99 /*NRPN_MSB*/        : c->midiRPN = 0xFFFF; return 1;
 		case  64 /*SUSTAIN*/         : tsf_channel_set_sustain(f, channel, control_value >= 64); return 1;
+		case  71 /*FILTER RESONANCE*/: c->midiQ  = control_value; goto TCMC_SET_FILTER;
+		case  74 /*FILTER CUTOFF */  : c->midiFc = control_value; goto TCMC_SET_FILTER;
 		case 120 /*ALL_SOUND_OFF*/   : tsf_channel_sounds_off_all(f, channel); return 1;
 		case 123 /*ALL_NOTES_OFF*/   : tsf_channel_note_off_all(f, channel);   return 1;
 		case 121 /*ALL_CTRL_OFF*/    :
@@ -1781,6 +1831,7 @@ TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int con
 			tsf_channel_set_pan(f, channel, 0.5f);
 			tsf_channel_set_pitchrange(f, channel, 2.0f);
 			tsf_channel_set_tuning(f, channel, 0);
+			tsf_channel_set_filter(f, channel, 0, 0);
 			return 1;
 	}
 	return 1;
@@ -1790,6 +1841,9 @@ TCMC_SET_VOLUME:
 	return 1;
 TCMC_SET_PAN:
 	tsf_channel_set_pan(f, channel, c->midiPan / 16383.0f);
+	return 1;
+TCMC_SET_FILTER:
+	tsf_channel_set_filter(f, channel, (c->midiFc-64)/64.0, (c->midiQ-64)/64.0 );
 	return 1;
 TCMC_SET_DATA:
 	if      (c->midiRPN == 0) tsf_channel_set_pitchrange(f, channel, (c->midiData >> 7) + 0.01f * (c->midiData & 0x7F));
