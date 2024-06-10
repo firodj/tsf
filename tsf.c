@@ -992,7 +992,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 		if (dynamicLowpass)
 		{
 			float fres = tmpInitialFilterFc + v->modlfo.level * tmpModLfoToFilterFc + v->modenv.level * tmpModEnvToFilterFc;
-			float lowpassFc = (fres <= 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
+			float lowpassFc = (fres < 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 0.5f);
 			float lowpassFilterQDB = tmpInitialFilterQ / 10.0f;
 			tmpLowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 			tmpLowpass.active = (lowpassFc < 0.499f);
@@ -1422,7 +1422,6 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->initialFilterFc = region->initialFilterFc;
 
 		// Apply default modulator: MIDI Note-On Velocity to Filter Cutoff (section 8.4.2)
-		// TODO: store to voice, will be used for base dynamicLowpass
 		if (region->vel2fc)
 			voice->initialFilterFc += region->vel2fc * (1.0f - vel);
 
@@ -1434,7 +1433,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		if (tmpInitialFilterQ < 0) tmpInitialFilterQ = 0;
 		else if (tmpInitialFilterQ > 960) tmpInitialFilterQ = 960;
 
-		lowpassFc = (tmpInitialFilterFc <= 13500 ? tsf_cents2Hertz(tmpInitialFilterFc) / f->outSampleRate : 1.0f);
+		lowpassFc = (tmpInitialFilterFc < 13500 ? tsf_cents2Hertz(tmpInitialFilterFc) / f->outSampleRate : 0.5f);
 		lowpassFilterQDB = tmpInitialFilterQ / 10.0f;
 		voice->lowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 		voice->lowpass.z1 = voice->lowpass.z2 = 0;
