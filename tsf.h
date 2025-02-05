@@ -250,18 +250,6 @@ TSFDEF int tsf_channel_get_pitchwheel(tsf* f, int channel);
 TSFDEF float tsf_channel_get_pitchrange(tsf* f, int channel);
 TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 
-#ifdef __cplusplus
-#  undef CPP_DEFAULT0
-}
-#endif
-
-// end header
-// ---------------------------------------------------------------------------------------------------------
-#endif //TSF_INCLUDE_TSF_INL
-
-#ifdef TSF_IMPLEMENTATION
-#undef TSF_IMPLEMENTATION
-
 // The lower this block size is the more accurate the effects are.
 // Increasing the value significantly lowers the CPU usage of the voice rendering.
 // If LFO affects the low-pass filter it can be hearable even as low as 8.
@@ -342,10 +330,6 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 #define TSF_WARN(msg, ...)
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef char tsf_fourcc[4];
 typedef signed char tsf_s8;
 typedef unsigned char tsf_u8;
@@ -355,6 +339,104 @@ typedef unsigned int tsf_u32;
 typedef char tsf_char20[20];
 
 #define TSF_FourCCEquals(value1, value2) (value1[0] == value2[0] && value1[1] == value2[1] && value1[2] == value2[2] && value1[3] == value2[3])
+
+struct tsf_modoper {
+	unsigned char index:7;
+	unsigned char cc:1; // cc=0=index is general control; cc=1=index is midi control
+	unsigned char d:1; // d=0=positive (0 -> 127); d=1=negative (127 -> 0)
+	unsigned char p:1; // p=0=unipolar(0 -> 1); p=1=bipolar(-1 -> +1)
+	unsigned char type:6; // 0=linear, 1=concave, 2=convex, 4=switch
+};
+
+struct tsf_modulator
+{
+	union {
+		unsigned int modSrcOper;
+		struct tsf_modoper modSrcOperDetails;
+	};
+	unsigned int modDestOper;
+	int modAmount;
+	union {
+		unsigned int modAmtSrcOper;
+		struct tsf_modoper modAmtSrcOperDetails;
+	};
+	unsigned int modTransOper;
+};
+
+struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
+struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
+struct tsf_voice_envelope { unsigned char segment, segmentIsExponential : 1, isAmpEnv : 1; short midiVelocity; float level, slope; int samplesUntilNextSegment; struct tsf_envelope parameters; };
+struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
+struct tsf_voice_lfo { int samplesUntil; float level, delta; };
+
+struct tsf_region
+{
+	int loop_mode;
+	unsigned int sample_rate;
+	unsigned char lokey, hikey, lovel, hivel;
+	unsigned int group, offset, end, loop_start, loop_end;
+	int transpose, tune, pitch_keycenter, pitch_keytrack;
+	float attenuation, pan;
+	struct tsf_envelope ampenv, modenv;
+	int initialFilterQ, initialFilterFc;
+	int modEnvToPitch, modEnvToFilterFc, modLfoToFilterFc, modLfoToVolume;
+	float delayModLFO;
+	int freqModLFO, modLfoToPitch;
+	float delayVibLFO;
+	int freqVibLFO, vibLfoToPitch;
+	float reverbSend, chorusSend;
+	int sampleID, instrumentID;
+	int modulatorNum;
+	struct tsf_modulator* modulators;
+};
+
+struct tsf_preset
+{
+	char presetName[21];
+	tsf_u16 preset, bank;
+	struct tsf_region* regions;
+	int regionNum;
+};
+
+struct tsf_sample
+{
+	char sampleName[21];
+	tsf_u32 start, end, startLoop, endLoop, sampleRate;
+	tsf_u8 originalPitch;
+	tsf_s8 pitchCorrection;
+	tsf_u16 sampleLink, sampleType;
+};
+
+struct tsf_voice
+{
+	int playingPreset, playingKey, playingChannel, heldSustain;
+	short playingVelocity;
+	struct tsf_region* region;
+	double pitchInputTimecents, pitchOutputFactor;
+	double sourceSamplePosition;
+	float  noteGainDB, panFactorLeft, panFactorRight;
+	unsigned int playIndex, loopStart, loopEnd;
+	int pan;
+	int initialFilterFc, initialFilterQ;
+	int vibLfoToPitch;
+	struct tsf_voice_envelope ampenv, modenv;
+	struct tsf_voice_lowpass lowpass;
+	struct tsf_voice_lfo modlfo, viblfo;
+};
+
+struct tsf_channel
+{
+	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData : 14, sustain : 1;
+	unsigned short modWheel, midiQ, midiFc;
+	float pitchRange, tuning;
+};
+
+struct tsf_channels
+{
+	void (*setupVoice)(tsf* f, struct tsf_voice* voice);
+	int channelNum, activeChannel;
+	struct tsf_channel channels[1];
+};
 
 struct tsf
 {
@@ -377,6 +459,28 @@ struct tsf
 	struct tsf_sample * samples;
 	int sampleNum;
 };
+
+TSFDEF double tsf_timecents2Secsd(double timecents);
+TSFDEF float tsf_timecents2Secsf(float timecents);
+TSFDEF float tsf_cents2Hertz(float cents);
+TSFDEF float tsf_decibelsToGain(float db);
+TSFDEF float tsf_gainToDecibels(float gain);
+
+#ifdef __cplusplus
+#  undef CPP_DEFAULT0
+}
+#endif
+
+// end header
+// ---------------------------------------------------------------------------------------------------------
+#endif //TSF_INCLUDE_TSF_INL
+
+#ifdef TSF_IMPLEMENTATION
+#undef TSF_IMPLEMENTATION
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 //----------------------- loader
 #ifndef TSF_NO_STDIO
@@ -450,104 +554,6 @@ static void tsf_hydra_read_imod(struct tsf_hydra_imod* i, struct tsf_stream* str
 static void tsf_hydra_read_igen(struct tsf_hydra_igen* i, struct tsf_stream* stream) { TSFR(genOper) TSFR(genAmount) }
 static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* stream) { TSFR(sampleName) TSFR(start) TSFR(end) TSFR(startLoop) TSFR(endLoop) TSFR(sampleRate) TSFR(originalPitch) TSFR(pitchCorrection) TSFR(sampleLink) TSFR(sampleType) }
 #undef TSFR
-
-struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
-struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
-struct tsf_voice_envelope { unsigned char segment, segmentIsExponential : 1, isAmpEnv : 1; short midiVelocity; float level, slope; int samplesUntilNextSegment; struct tsf_envelope parameters; };
-struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
-struct tsf_voice_lfo { int samplesUntil; float level, delta; };
-
-struct tsf_modoper {
-	unsigned char index:7;
-	unsigned char cc:1; // cc=0=index is general control; cc=1=index is midi control
-	unsigned char d:1; // d=0=positive (0 -> 127); d=1=negative (127 -> 0)
-	unsigned char p:1; // p=0=unipolar(0 -> 1); p=1=bipolar(-1 -> +1)
-	unsigned char type:6; // 0=linear, 1=concave, 2=convex, 4=switch
-};
-
-struct tsf_modulator
-{
-	union {
-		unsigned int modSrcOper;
-		struct tsf_modoper modSrcOperDetails;
-	};
-	unsigned int modDestOper;
-	int modAmount;
-	union {
-		unsigned int modAmtSrcOper;
-		struct tsf_modoper modAmtSrcOperDetails;
-	};
-	unsigned int modTransOper;
-};
-
-struct tsf_region
-{
-	int loop_mode;
-	unsigned int sample_rate;
-	unsigned char lokey, hikey, lovel, hivel;
-	unsigned int group, offset, end, loop_start, loop_end;
-	int transpose, tune, pitch_keycenter, pitch_keytrack;
-	float attenuation, pan;
-	struct tsf_envelope ampenv, modenv;
-	int initialFilterQ, initialFilterFc;
-	int modEnvToPitch, modEnvToFilterFc, modLfoToFilterFc, modLfoToVolume;
-	float delayModLFO;
-	int freqModLFO, modLfoToPitch;
-	float delayVibLFO;
-	int freqVibLFO, vibLfoToPitch;
-	float reverbSend, chorusSend;
-	int sampleID, instrumentID;
-	int modulatorNum;
-	struct tsf_modulator* modulators;
-};
-
-struct tsf_preset
-{
-	char presetName[21];
-	tsf_u16 preset, bank;
-	struct tsf_region* regions;
-	int regionNum;
-};
-
-struct tsf_sample
-{
-	char sampleName[21];
-	tsf_u32 start, end, startLoop, endLoop, sampleRate;
-	tsf_u8 originalPitch;
-	tsf_s8 pitchCorrection;
-	tsf_u16 sampleLink, sampleType;
-};
-
-struct tsf_voice
-{
-	int playingPreset, playingKey, playingChannel, heldSustain;
-	short playingVelocity;
-	struct tsf_region* region;
-	double pitchInputTimecents, pitchOutputFactor;
-	double sourceSamplePosition;
-	float  noteGainDB, panFactorLeft, panFactorRight;
-	unsigned int playIndex, loopStart, loopEnd;
-	int pan;
-	int initialFilterFc, initialFilterQ;
-	int vibLfoToPitch;
-	struct tsf_voice_envelope ampenv, modenv;
-	struct tsf_voice_lowpass lowpass;
-	struct tsf_voice_lfo modlfo, viblfo;
-};
-
-struct tsf_channel
-{
-	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData : 14, sustain : 1;
-	unsigned short modWheel, midiQ, midiFc;
-	float pitchRange, tuning;
-};
-
-struct tsf_channels
-{
-	void (*setupVoice)(tsf* f, struct tsf_voice* voice);
-	int channelNum, activeChannel;
-	struct tsf_channel channels[1];
-};
 
 TSFDEF double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
 TSFDEF float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
