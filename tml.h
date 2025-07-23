@@ -457,7 +457,7 @@ TMLDEF tml_message* tml_load(struct tml_stream* stream)
 			int type = tml_parsemessage(&messages, &p);
 			if (type == TML_EOT || type < 0) break; //file end or illegal data encountered
 		}
-		if (p.buf != p.buf_end) { TML_WARN( "Track length did not match data length, actual:%lx expect:%lx\n", (uintptr_t)p.buf, (uintptr_t)p.buf_end); }
+		if (p.buf != p.buf_end) { TML_WARN( "Track length did not match data length, actual:%lx expect:%lx\n", (unsigned long)p.buf, (unsigned long)p.buf_end); }
 		t->End = p.message_count;
 	}
 	TML_FREE(trackbuf);

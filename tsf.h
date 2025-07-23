@@ -925,7 +925,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
 			if (debug_wantlearn)
-				printf(">\tpbag [%lu]\n", (uintptr_t)(ppbag-(hydra->pbags + pphdr->presetBagNdx)));
+				printf(">\tpbag [%lu]\n", (unsigned long)(ppbag-(hydra->pbags + pphdr->presetBagNdx)));
 
 			struct tsf_hydra_pgen *ppgen, *ppgenEnd; struct tsf_hydra_inst *pinst; struct tsf_hydra_ibag *pibag, *pibagEnd; struct tsf_hydra_igen *pigen, *pigenEnd;
 			struct tsf_region presetRegion;
@@ -937,7 +937,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 			for (ppgen = hydra->pgens + ppbag->genNdx, ppgenEnd = hydra->pgens + ppbag[1].genNdx; ppgen != ppgenEnd; ppgen++)
 			{
 				if (debug_wantlearn)
-					printf(">\t\tpgen [%lu] %d(%s)=%x\n", (uintptr_t)(ppgen-(hydra->pgens + ppbag->genNdx)), ppgen->genOper, tsf_smurf_gen_name(ppgen->genOper), ppgen->genAmount.wordAmount);
+					printf(">\t\tpgen [%lu] %d(%s)=%x\n", (unsigned long)(ppgen-(hydra->pgens + ppbag->genNdx)), ppgen->genOper, tsf_smurf_gen_name(ppgen->genOper), ppgen->genAmount.wordAmount);
 
 				// Instrument.
 				if (ppgen->genOper == GenInstrument)
@@ -961,7 +961,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 					for (pibag = hydra->ibags + pinst->instBagNdx, pibagEnd = hydra->ibags + pinst[1].instBagNdx; pibag != pibagEnd; pibag++)
 					{
 						if (debug_wantlearn)
-							printf(">\t\t\tibag [%lu]\n", (uintptr_t)(pibag-(hydra->ibags + pinst->instBagNdx)));
+							printf(">\t\t\tibag [%lu]\n", (unsigned long)(pibag-(hydra->ibags + pinst->instBagNdx)));
 
 						// Generators.
 						struct tsf_region zoneRegion;
@@ -982,7 +982,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 								pimod++)
 							{
 								if (debug_wantlearn) {
-									printf(">\t\t\t\timod [%lu] src:%x src2:%x\n", (uintptr_t)(pimod-(hydra->imods + pibag->instModNdx)), pimod->modSrcOper, pimod->modAmtSrcOper);
+									printf(">\t\t\t\timod [%lu] src:%x src2:%x\n", (unsigned long)(pimod-(hydra->imods + pibag->instModNdx)), pimod->modSrcOper, pimod->modAmtSrcOper);
 
 									int idx = pimod->modSrcOper & 0x7F;
 									int cc = (pimod->modSrcOper & 0x80) == 0x80;
@@ -1033,7 +1033,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 						for (pigen = hydra->igens + pibag->instGenNdx, pigenEnd = hydra->igens + pibag[1].instGenNdx; pigen != pigenEnd; pigen++)
 						{
 							if (debug_wantlearn)
-								printf(">\t\t\t\tigen [%lu] %d(%s)=0x%x (%d)\n", (uintptr_t)(pigen-(hydra->igens + pibag->instGenNdx)), pigen->genOper, tsf_smurf_gen_name(pigen->genOper), pigen->genAmount.wordAmount, pigen->genAmount.shortAmount);
+								printf(">\t\t\t\tigen [%lu] %d(%s)=0x%x (%d)\n", (unsigned long)(pigen-(hydra->igens + pibag->instGenNdx)), pigen->genOper, tsf_smurf_gen_name(pigen->genOper), pigen->genAmount.wordAmount, pigen->genAmount.shortAmount);
 
 							if (pigen->genOper == GenSampleID)
 							{
@@ -1105,7 +1105,7 @@ static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int font
 			// other words, a PMOD modulator can increase or decrease the amount of an IMOD modulator.
 			for (ppmod = hydra->pmods + ppbag->modNdx, ppmodEnd = hydra->pmods + ppbag[1].modNdx; ppmod != ppmodEnd; ppmod++) {
 				if (debug_wantlearn)
-					printf(">\t\tpmod [%lu] src:%x dest gen:%d(%s)\n", (uintptr_t)(ppmod-(hydra->pmods + ppbag->modNdx)), ppmod->modSrcOper, ppmod->modDestOper, tsf_smurf_gen_name(ppmod->modDestOper));
+					printf(">\t\tpmod [%lu] src:%x dest gen:%d(%s)\n", (unsigned long)(ppmod-(hydra->pmods + ppbag->modNdx)), ppmod->modSrcOper, ppmod->modDestOper, tsf_smurf_gen_name(ppmod->modDestOper));
 
 			}
 
